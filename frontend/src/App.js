@@ -16,14 +16,30 @@ const App = () => {
     setMessages((prevMessages) => [...prevMessages, { from: 'user', text: input }]);
 
     try {
-      const response = await axios.post('http://localhost:5001/api/swap', {
-        name: 'swap',
-        args: {
-          inputAmount: input.split(' ')[1],  // extract amount from user input (e.g., "1")
-          inputToken: input.split(' ')[2],   // extract input token (e.g., "eth")
-          outputToken: input.split(' ')[4]   // extract output token (e.g., "usdc")
-        }
-      });
+      let response;
+
+      // Check if it's a bridge request
+      if (input.startsWith('bridge')) {
+        response = await axios.post('http://localhost:5001/api/bridge', {
+          name: 'bridge',
+          args: {
+            inputAmount: input.split(' ')[1],   // extract amount from user input (e.g., "1")
+            inputToken: input.split(' ')[2],    // extract input token (e.g., "eth")
+            fromChain: input.split(' ')[4],     // extract fromChain (e.g., "ETH")
+            toChain: input.split(' ')[6]        // extract toChain (e.g., "ARB")
+          }
+        });
+      } else if (input.startsWith('swap')) {
+        // Handle swap request
+        response = await axios.post('http://localhost:5001/api/swap', {
+          name: 'swap',
+          args: {
+            inputAmount: input.split(' ')[1],  // extract amount from user input (e.g., "1")
+            inputToken: input.split(' ')[2],   // extract input token (e.g., "eth")
+            outputToken: input.split(' ')[4]   // extract output token (e.g., "usdc")
+          }
+        });
+      }
 
       // Extract transactionRequest from LI.FI response
       const transactionRequest = response.data.transactionRequest;

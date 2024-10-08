@@ -44,6 +44,43 @@ app.post('/api/swap', async (req, res) => {
     }
 });
 
+app.post('/api/bridge', async (req, res) => {
+    const { name, args } = req.body;
+
+    if (name != 'bridge') {
+        return res.status(400).json({ error: "Invalid action" });
+    }
+    // Extract dynamic data from frontend
+    const inputAmount = `${BigInt(args.inputAmount) * BigInt(10 ** 18)}`;  // Convert inputAmount to wei
+    const fromToken = args.inputToken.toUpperCase();  // e.g., 'ETH'
+    const fromChain = args.fromChain.toUpperCase();   // e.g., 'ETH' (Ethereum Mainnet)
+    const toChain = args.toChain.toUpperCase();       // e.g., 'ARB' (Arbitrum)
+
+    const fromAddress = '0x40b38765696e3d5d8d9d834d8aad4bb6e418e489';  // Example wallet address
+    const toAddress = '0x40b38765696e3d5d8d9d834d8aad4bb6e418e489';    // Example receiving address (can be dynamic)
+
+    try {
+        // Send request to LI.FI API for bridging
+        const result = await axios.get('https://li.quest/v1/quote', {
+            params: {
+                fromChain,
+                toChain,
+                fromToken,
+                toToken: fromToken,
+                fromAmount: inputAmount,
+                fromAddress,
+                toAddress
+            }
+        });
+
+        // Send the LI.FI bridge quote result back
+        res.json(result.data);
+    } catch (error) {
+        console.error('Error fetching bridge quote:', error.response?.data || error.message);
+        res.status(500).json({ error: 'Failed to fetch bridge quote' });
+    }
+})
+
 app.listen(port, () => {
     console.log(`API running on http://localhost:${port}`);
 });

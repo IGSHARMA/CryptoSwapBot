@@ -13,6 +13,10 @@ app.post('/api/swap', async (req, res) => {
     if (name != 'swap') {
         return res.status(400).json({ error: 'Invalid Action' });
     }
+
+    if (isNaN(args.inputAmount)) {
+        return res.status(400).json({ error: 'Invalid input amount. Please provide a valid number.' });
+    }
     // LI.FI API call for a swap quote
 
     // Hardcoded values for testing
@@ -49,6 +53,10 @@ app.post('/api/bridge', async (req, res) => {
 
     if (name != 'bridge') {
         return res.status(400).json({ error: "Invalid action" });
+    }
+
+    if (isNaN(args.inputAmount)) {
+        return res.status(400).json({ error: 'Invalid input amount. Please provide a valid number.' });
     }
     // Extract dynamic data from frontend
     const inputAmount = `${BigInt(args.inputAmount) * BigInt(10 ** 18)}`;  // Convert inputAmount to wei

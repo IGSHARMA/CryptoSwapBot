@@ -3,8 +3,64 @@ const cors = require('cors');
 const axios = require('axios');
 const app = express();
 const port = 5001;
+
 app.use(express.json());
 app.use(cors());
+
+
+const TENDERLY_API_KEY = "USpb8tFuWi62G5U3wqtMpTRd3QNJ7Mjp";
+const TENDERLY_ACCOUNT_SLUG = "pesharma";
+const TENDERLY_PROJECT_SLUG = "cryptochatbot";
+
+//create Tenderly fork
+// const createTenderlyFork = async (chainId) => {
+//     try {
+//         const response = await axios.post(
+//             `https://api.tenderly.co/api/v1/account/${TENDERLY_ACCOUNT_SLUG}/project/${TENDERLY_PROJECT_SLUG}/fork`,
+//             {
+//                 network_id: chainId.toString()  // Example: "1" for Ethereum Mainnet
+//             },
+//             {
+//                 headers: {
+//                     'X-Access-Key': TENDERLY_API_KEY,
+//                     'Content-Type': 'application/json'
+//                 }
+//             }
+//         );
+//         return response.data.simulation_fork.id;  // Return the fork ID
+//     } catch (error) {
+//         console.error('Error creating Tenderly fork:', error);
+//         throw error;
+//     }
+// };
+
+const createFork = async () => {
+    try {
+        const response = await axios.post(
+            `https://api.tenderly.co/api/v1/account/${TENDERLY_ACCOUNT_SLUG}/project/${TENDERLY_PROJECT_SLUG}/fork`,
+            {
+                network_id: '1', // Specify the network (e.g., 1 for Ethereum Mainnet)
+            },
+            {
+                headers: {
+                    'X-Access-Key': TENDERLY_API_KEY,
+                },
+            }
+        );
+
+        // Check if the fork was created successfully
+        if (response.data && response.data.simulation_fork) {
+            console.log('Fork Created Successfully:');
+            console.log(`Fork ID: ${response.data.simulation_fork.id}`);
+        } else {
+            console.error('Failed to create fork:', response.data);
+        }
+    } catch (error) {
+        console.error('Error creating fork:', error);
+    }
+};
+
+createFork();
 
 // SWAP endpoint
 app.post('/api/swap', async (req, res) => {

@@ -19,6 +19,10 @@ function App() {
       const erc20Abi = ["function approve(address spender, uint256 amount) public returns (bool)"];
       const tokenContract = new Contract(fromToken, erc20Abi, signer);
 
+      // Ensure token addresses have correct checksums
+      const fromTokenChecksum = ethers.getAddress(fromToken);
+      const toTokenChecksum = ethers.getAddress(toToken);
+
       // Approve Uniswap router to spend tokens
       const approvalAmount = ethers.parseUnits(inputAmount, 18);
       const approveTx = await tokenContract.approve(uniswapRouterAddress, approvalAmount);
@@ -30,7 +34,7 @@ function App() {
       const uniswapContract = new Contract(uniswapRouterAddress, uniswapRouterABI, signer);
 
       // Set up the swap parameters dynamically based on user input
-      const path = [fromToken, toToken];
+      const path = [fromTokenChecksum, toTokenChecksum];
       const amountIn = ethers.parseUnits(inputAmount, 18);
       const amountOutMin = 0;
       const toAddress = await signer.getAddress();

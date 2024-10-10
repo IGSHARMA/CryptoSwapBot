@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const ethers = require('ethers');
+require('dotenv').config();
 const app = express();
 const port = 5001;
 
@@ -8,59 +10,154 @@ app.use(express.json());
 app.use(cors());
 
 
-const TENDERLY_API_KEY = "USpb8tFuWi62G5U3wqtMpTRd3QNJ7Mjp";
-const TENDERLY_ACCOUNT_SLUG = "pesharma";
-const TENDERLY_PROJECT_SLUG = "cryptochatbot";
+const TENDERLY_API_KEY = process.env.TENDERLY_API_KEY;
+const TENDERLY_ACCOUNT_SLUG = process.env.TENDERLY_ACCOUNT_SLUG;
+const TENDERLY_PROJECT_SLUG = process.env.TENDERLY_PROJECT_SLUG;
+const TENDERLY_RPC_URL = 'https://rpc.tenderly.co/fork/7932e8e6-a9aa-45d7-a74b-9a7ee30b3a3d'; // Static Tenderly Fork RPC URL
+const DEFAULT_FROM_ADDRESS = '0xF2C9729E0FEf5dd486753dc02aFE93BC0c06801e'; // Static address for transactions
 
-//create Tenderly fork
-// const createTenderlyFork = async (chainId) => {
-//     try {
-//         const response = await axios.post(
-//             `https://api.tenderly.co/api/v1/account/${TENDERLY_ACCOUNT_SLUG}/project/${TENDERLY_PROJECT_SLUG}/fork`,
-//             {
-//                 network_id: chainId.toString()  // Example: "1" for Ethereum Mainnet
-//             },
-//             {
-//                 headers: {
-//                     'X-Access-Key': TENDERLY_API_KEY,
-//                     'Content-Type': 'application/json'
-//                 }
-//             }
-//         );
-//         return response.data.simulation_fork.id;  // Return the fork ID
-//     } catch (error) {
-//         console.error('Error creating Tenderly fork:', error);
-//         throw error;
-//     }
-// };
-
-const createFork = async () => {
+// Simulate a swap transaction on Uniswap
+const simulateSwapTransaction = async () => {
     try {
-        const response = await axios.post(
-            `https://api.tenderly.co/api/v1/account/${TENDERLY_ACCOUNT_SLUG}/project/${TENDERLY_PROJECT_SLUG}/fork`,
-            {
-                network_id: '1', // Specify the network (e.g., 1 for Ethereum Mainnet)
-            },
-            {
-                headers: {
-                    'X-Access-Key': TENDERLY_API_KEY,
-                },
-            }
-        );
+        const uniswapRouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
+        const uniswapRouterAbi = ["function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)"];
 
-        // Check if the fork was created successfully
-        if (response.data && response.data.simulation_fork) {
-            console.log('Fork Created Successfully:');
-            console.log(`Fork ID: ${response.data.simulation_fork.id}`);
-        } else {
-            console.error('Failed to create fork:', response.data);
-        }
+        const iface = new ethers.utils.Interface(uniswapRouterAbi);
+
+        const data = iface.encodeFunctionData("swapExactETHForTokens", [
+            ethers.BigNumber.from('0'), // amountOutMin
+            ['0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'], // ETH to USDC path
+            "0xF2C9729E0FEf5dd486753dc02aFE93BC0c06801e", // recipient address
+            Math.floor(Date.now() / 1000) + 60 * 10 // deadline (10 minutes from now)
+        ]);
+
+        const txRequest = {
+            from: '0xF2C9729E0FEf5dd486753dc02aFE93BC0c06801e',
+            to: uniswapRouterAddress,
+            data: data,
+            value: ethers.utils.parseEther('1'), // Send 1 ETH for the swap
+            gasLimit: ethers.BigNumber.from('300000'), // Adjust if necessary
+            gasPrice: ethers.BigNumber.from('1000000000') // 1 gwei
+        };
+
+        const txResponse = await wallet.sendTransaction(txRequest);
+
+        // Wait for the transaction to be mined
+        const receipt = await txResponse.wait();
+        console.log('Transaction Simulated Successfully:', receipt);
+        return receipt;
     } catch (error) {
-        console.error('Error creating fork:', error);
+        console.log('Error simulating swap transaction:', error);
+        throw error;
     }
 };
 
-createFork();
+const simulateTransactionOnFork = async (transactionRequest) => {
+    try {
+        console.log("Transaction Request:", transactionRequest);
+        if (!transactionRequest.to || !transactionRequest.data) {
+            throw new Error("Missing required transaction fields");
+        }
+
+        // Use the provided Tenderly RPC endpoint
+        const provider = new ethers.JsonRpcProvider(TENDERLY_RPC_URL);
+
+        // Use the predefined address for all transactions
+        const fromAddress = DEFAULT_FROM_ADDRESS;
+        console.log("Using from address:", fromAddress);
+
+        // Use a signer wallet for signing transactions instead of provider.getSigner
+        const privateKey = process.env.PRIVATE_KEY; // Add the private key of the account (e.g., from Tenderly forked accounts)
+        const wallet = new ethers.Wallet(privateKey, provider);
+
+        console.log("Signer wallet obtained for address:", wallet.address);
+        const txResponse = await wallet.sendTransaction({
+            to: transactionRequest.to,
+            data: transactionRequest.data,
+            value: transactionRequest.value || '0',
+            gasLimit: '300000',
+            gasPrice: '1000000000',
+        });
+
+        // Wait for the transaction to be mined
+        const receipt = await txResponse.wait();
+        console.log('Transaction Simulated Successfully:', receipt);
+        return receipt;
+    } catch (error) {
+        console.log('Error simulating transaction via RPC:', error);
+        throw error;
+    }
+};
+
+// API endpoint to get available accounts from the fork
+app.get('/api/accounts', async (req, res) => {
+    try {
+        const provider = new ethers.JsonRpcProvider(TENDERLY_RPC_URL);
+        const accounts = await provider.listAccounts();
+        res.json({ accounts });
+    } catch (error) {
+        console.error('Error fetching accounts:', error);
+        res.status(500).json({ error: 'Error fetching accounts' });
+    }
+});
+
+app.post('/api/simulate', async (req, res) => {
+    try {
+        const { transactionRequest, type, swapDetails } = req.body;
+
+        console.log('Received simulation request:', transactionRequest);
+
+        if (!transactionRequest) {
+            return res.status(400).json({ error: 'Transaction request is missing' });
+        }
+
+        let txRequest = transactionRequest;
+
+        // Check if this is a swap request
+        if (type === 'swap' && swapDetails) {
+            const uniswapRouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // Uniswap Router Address
+
+            // Define the Uniswap ABI
+            const uniswapRouterAbi = [
+                "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)"
+            ];
+            const iface = new ethers.utils.Interface(uniswapRouterAbi);
+
+            // Update the path to use WETH instead of ETH
+            const path = [
+                '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',  // WETH
+                '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'   // USDC
+            ];
+
+            // Encode the function data for Uniswap swap
+            const data = iface.encodeFunctionData("swapExactETHForTokens", [
+                0, // Minimum amount of tokens expected (can be 0)ethers.BigNumber.from(swapDetails.amountOutMin)
+                path, // Updated path from WETH to USDC
+                swapDetails.recipient, // Address to receive the output tokens
+                Math.floor(Date.now() / 1000) + swapDetails.deadline // Deadline for the swap
+            ]);
+
+            // Update the transaction request with encoded data and Uniswap router as the destination
+            txRequest = {
+                from: transactionRequest.from,
+                to: uniswapRouterAddress, // Uniswap router address
+                data: data,
+                value: ethers.utils.parseEther(swapDetails.inputAmount), // ETH amount for the swap
+                gasLimit: ethers.BigNumber.from(transactionRequest.gasLimit || '300000'), // Adjust gas limit for swap
+                gasPrice: ethers.BigNumber.from(transactionRequest.gasPrice || '1000000000') // 1 gwei
+            };
+        }
+
+        // Simulate the transaction using the modified transaction request
+        const simulationResult = await simulateTransactionOnFork(txRequest);
+
+        // Send the simulation result back to the client
+        res.json(simulationResult);
+    } catch (error) {
+        console.error('Error simulating transaction:', error);
+        res.status(500).json({ error: 'Error simulating transaction' });
+    }
+});
 
 // SWAP endpoint
 app.post('/api/swap', async (req, res) => {
@@ -74,24 +171,22 @@ app.post('/api/swap', async (req, res) => {
         return res.status(400).json({ error: 'Invalid input amount. Please provide a valid number.' });
     }
     // LI.FI API call for a swap quote
-
-    // Hardcoded values for testing
-    const inputAmount = args.inputAmount * 10 ** 18;  // We are taking in 1 so we have to convert wei
-    const inputToken = args.inputToken.toUpperCase(); // e.g., 'ETH'
-    const outputToken = args.outputToken.toUpperCase(); // e.g., 'USDC'
+    const inputAmount = args.inputAmount * 10 ** 18;
+    const inputToken = args.inputToken.toUpperCase();
+    const outputToken = args.outputToken.toUpperCase();
     const fromChain = 'ETH';  // Ethereum chain ID
     const toChain = 'ETH';    // Same chain (Ethereum for now)
-    const fromAddress = '0x40b38765696e3d5d8d9d834d8aad4bb6e418e489';  // Example wallet address
+    const fromAddress = '0x40b38765696e3d5d8d9d834d8aad4bb6e418e489';
 
     try {
         const result = await axios.get('https://li.quest/v1/quote', {
             params: {
-                fromChain,          // Sending chain (Ethereum mainnet)
-                toChain,            // Receiving chain (Ethereum mainnet)
-                fromToken: inputToken,  // Native ETH
-                toToken: outputToken,   // USDC
-                fromAmount: inputAmount, // 1 ETH in wei (1000000000000000000)
-                fromAddress          // Sender wallet address
+                fromChain,
+                toChain,
+                fromToken: inputToken,
+                toToken: outputToken,
+                fromAmount: inputAmount,
+                fromAddress
             }
         });
 
@@ -115,13 +210,13 @@ app.post('/api/bridge', async (req, res) => {
         return res.status(400).json({ error: 'Invalid input amount. Please provide a valid number.' });
     }
     // Extract dynamic data from frontend
-    const inputAmount = `${BigInt(args.inputAmount) * BigInt(10 ** 18)}`;  // Convert inputAmount to wei
-    const fromToken = args.inputToken.toUpperCase();  // e.g., 'ETH'
-    const fromChain = args.fromChain.toUpperCase();   // e.g., 'ETH' (Ethereum Mainnet)
-    const toChain = args.toChain.toUpperCase();       // e.g., 'ARB' (Arbitrum)
+    const inputAmount = `${BigInt(args.inputAmount) * BigInt(10 ** 18)}`;
+    const fromToken = args.inputToken.toUpperCase();
+    const fromChain = args.fromChain.toUpperCase();
+    const toChain = args.toChain.toUpperCase();
 
-    const fromAddress = '0x40b38765696e3d5d8d9d834d8aad4bb6e418e489';  // Example wallet address
-    const toAddress = '0x40b38765696e3d5d8d9d834d8aad4bb6e418e489';    // Example receiving address (can be dynamic)
+    const fromAddress = '0x40b38765696e3d5d8d9d834d8aad4bb6e418e489';
+    const toAddress = '0x40b38765696e3d5d8d9d834d8aad4bb6e418e489'; // Example receiving address (can be dynamic)
 
     try {
         // Send request to LI.FI API for bridging
@@ -149,24 +244,31 @@ app.listen(port, () => {
     console.log(`API running on http://localhost:${port}`);
 });
 
-// "swap 1 eth for usdc": [
-//     [
-//         {
-//             "name": "swap",
-//             "args": {
-//                 "inputAmount": "1",
-//                 "inputToken": "eth",
-//                 "outputToken": "usdc"
+// create Tenderly fork
+// const createTenderlyFork = async (chainId) => {
+//     try {
+//         const response = await axios.post(
+//             `https://api.tenderly.co/api/v1/account/${TENDERLY_ACCOUNT_SLUG}/project/${TENDERLY_PROJECT_SLUG}/fork`,
+//             {
+//                 network_id: chainId.toString()
+//             },
+//             {
+//                 headers: {
+//                     'X-Access-Key': TENDERLY_API_KEY,
+//                     'Content-Type': 'application/json'
+//                 }
 //             }
-//         }
-//     ]
-// ],
+//         );
+//         console.log('Fork Created Successfully');
+//         const forkId = response.data.simulation_fork.id;  // Extract the fork ID correctly
+//         console.log(`This is the fork id: ${forkId}`);
 
-//ADRESS: 0x40b38765696e3d5d8d9d834d8aad4bb6e418e489
+//         // Adding delay to ensure fork readiness
+//         await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
 
-//implement a brige endpoint 
-//bridge 1 ETH from ETH to ARB
-//implement deposit and withdraw to AVE
-//have to build functions on the smart contracts 
-//Using tenderly.co 
-//give them a transaction on the fork and it will give you an ouput of what transactions change
+//         return forkId;  // Return the fork ID
+//     } catch (error) {
+//         console.error('Error creating Tenderly fork:', error);
+//         throw error;
+//     }
+// };

@@ -101,6 +101,64 @@ app.get('/api/accounts', async (req, res) => {
     }
 });
 
+// app.post('/api/simulate', async (req, res) => {
+//     try {
+//         const { transactionRequest, type, swapDetails } = req.body;
+
+//         console.log('Received simulation request:', transactionRequest);
+
+//         if (!transactionRequest) {
+//             return res.status(400).json({ error: 'Transaction request is missing' });
+//         }
+
+//         let txRequest = transactionRequest;
+
+//         // Check if this is a swap request
+//         if (type === 'swap' && swapDetails) {
+//             const uniswapRouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // Uniswap Router Address
+
+//             // Define the Uniswap ABI
+//             const uniswapRouterAbi = [
+//                 "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)"
+//             ];
+//             const iface = new ethers.utils.Interface(uniswapRouterAbi);
+
+//             // Update the path to use WETH instead of ETH
+//             const path = [
+//                 '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',  // WETH
+//                 '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'   // USDC
+//             ];
+
+//             // Encode the function data for Uniswap swap
+//             const data = iface.encodeFunctionData("swapExactETHForTokens", [
+//                 0, // Minimum amount of tokens expected (can be 0)ethers.BigNumber.from(swapDetails.amountOutMin)
+//                 path, // Updated path from WETH to USDC
+//                 swapDetails.recipient, // Address to receive the output tokens
+//                 Math.floor(Date.now() / 1000) + swapDetails.deadline // Deadline for the swap
+//             ]);
+
+//             // Update the transaction request with encoded data and Uniswap router as the destination
+//             txRequest = {
+//                 from: transactionRequest.from,
+//                 to: uniswapRouterAddress, // Uniswap router address
+//                 data: data,
+//                 value: ethers.utils.parseEther(swapDetails.inputAmount), // ETH amount for the swap
+//                 gasLimit: ethers.BigNumber.from(transactionRequest.gasLimit || '300000'), // Adjust gas limit for swap
+//                 gasPrice: ethers.BigNumber.from(transactionRequest.gasPrice || '1000000000') // 1 gwei
+//             };
+//         }
+
+//         // Simulate the transaction using the modified transaction request
+//         const simulationResult = await simulateTransactionOnFork(txRequest);
+
+//         // Send the simulation result back to the client
+//         res.json(simulationResult);
+//     } catch (error) {
+//         console.error('Error simulating transaction:', error);
+//         res.status(500).json({ error: 'Error simulating transaction' });
+//     }
+// });
+
 app.post('/api/simulate', async (req, res) => {
     try {
         const { transactionRequest, type, swapDetails } = req.body;
@@ -113,26 +171,25 @@ app.post('/api/simulate', async (req, res) => {
 
         let txRequest = transactionRequest;
 
-        // Check if this is a swap request
+        // Check if this is a swap request for token-to-token
         if (type === 'swap' && swapDetails) {
             const uniswapRouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // Uniswap Router Address
 
-            // Define the Uniswap ABI
+            // Define the Uniswap ABI for token-to-token swaps
             const uniswapRouterAbi = [
-                "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)"
+                "function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)"
             ];
+
             const iface = new ethers.utils.Interface(uniswapRouterAbi);
 
-            // Update the path to use WETH instead of ETH
-            const path = [
-                '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',  // WETH
-                '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'   // USDC
-            ];
+            // Define the path for token-to-token swaps (e.g., DAI -> USDC)
+            const path = [swapDetails.inputToken, swapDetails.outputToken];
 
-            // Encode the function data for Uniswap swap
-            const data = iface.encodeFunctionData("swapExactETHForTokens", [
-                0, // Minimum amount of tokens expected (can be 0)ethers.BigNumber.from(swapDetails.amountOutMin)
-                path, // Updated path from WETH to USDC
+            // Encode the function data for Uniswap token-to-token swap
+            const data = iface.encodeFunctionData("swapExactTokensForTokens", [
+                ethers.BigNumber.from(swapDetails.inputAmount), // Amount of input tokens
+                ethers.BigNumber.from(swapDetails.amountOutMin), // Minimum amount of output tokens expected
+                path, // Swap path (input -> output token addresses)
                 swapDetails.recipient, // Address to receive the output tokens
                 Math.floor(Date.now() / 1000) + swapDetails.deadline // Deadline for the swap
             ]);
@@ -142,7 +199,6 @@ app.post('/api/simulate', async (req, res) => {
                 from: transactionRequest.from,
                 to: uniswapRouterAddress, // Uniswap router address
                 data: data,
-                value: ethers.utils.parseEther(swapDetails.inputAmount), // ETH amount for the swap
                 gasLimit: ethers.BigNumber.from(transactionRequest.gasLimit || '300000'), // Adjust gas limit for swap
                 gasPrice: ethers.BigNumber.from(transactionRequest.gasPrice || '1000000000') // 1 gwei
             };

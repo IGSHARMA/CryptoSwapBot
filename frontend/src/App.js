@@ -1,49 +1,53 @@
 import React, { useState } from 'react';
-import axios from 'axios';
-import { Contract } from 'ethers';  // Also import Contract to use for contract creation
+import { ethers, Contract } from 'ethers';
 
 function App() {
-  const [input, setInput] = useState('');
+  const [inputAmount, setInputAmount] = useState('');
+  const [fromToken, setFromToken] = useState('');  // from token 
+  const [toToken, setToToken] = useState('');      // to token
   const [messages, setMessages] = useState([]);
 
   const handleSendMessage = async () => {
-    setMessages((prevMessages) => [...prevMessages, { sender: 'user', text: input }]);
+    setMessages((prevMessages) => [...prevMessages, { sender: 'user', text: `Swapping ${inputAmount} ${fromToken} to ${toToken}` }]);
 
     try {
-      let response;
+      // Connect to the user's Ethereum wallet (MetaMask or similar)
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
 
-      const uniswapRouterAddress = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D';  // Uniswap Router address
+      const uniswapRouterAddress = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D';
+      const erc20Abi = ["function approve(address spender, uint256 amount) public returns (bool)"];
+      const tokenContract = new Contract(fromToken, erc20Abi, signer);
+
+      // Approve Uniswap router to spend tokens
+      const approvalAmount = ethers.parseUnits(inputAmount, 18);
+      const approveTx = await tokenContract.approve(uniswapRouterAddress, approvalAmount);
+      await approveTx.wait();
 
       const uniswapRouterABI = [
-        "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)"
+        "function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)"
       ];
+      const uniswapContract = new Contract(uniswapRouterAddress, uniswapRouterABI, signer);
 
-      const uniswapContract = new Contract(uniswapRouterAddress, uniswapRouterABI);
+      // Set up the swap parameters dynamically based on user input
+      const path = [fromToken, toToken];
+      const amountIn = ethers.parseUnits(inputAmount, 18);
+      const amountOutMin = 0;
+      const toAddress = await signer.getAddress();
+      const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
 
-      const amountOutMin = 0;  // Use parseUnits to convert the amount
-      const path = ['0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48']; // Example token addresses (ETH -> USDC)
-      const to = '0xF2C9729E0FEf5dd486753dc02aFE93BC0c06801e';  // Example user wallet address
-      const deadline = Math.floor(Date.now() / 1000) + 60 * 20;  // 20-minute deadline
-
-      const calldata = await uniswapContract.interface.encodeFunctionData(
-        'swapExactETHForTokens',
-        [amountOutMin, path, to, deadline]
+      // Execute the swap
+      const swapTx = await uniswapContract.swapExactTokensForTokens(
+        amountIn,
+        amountOutMin,
+        path,
+        toAddress,
+        deadline
       );
 
-      const transactionRequest = {
-        from: '0xF2C9729E0FEf5dd486753dc02aFE93BC0c06801e',  // Sender address
-        to: uniswapRouterAddress,
-        data: calldata,
-        value: '100000000000000000',  // Amount in wei (1 ETH in wei)
-        gasLimit: '30000',  // Example gas limit
-        gasPrice: '1000000000',  // Example gas price
-      };
+      await swapTx.wait();
 
-      const chainId = 1;  // Example chain ID for Ethereum mainnet
-
-      response = await axios.post('http://localhost:5001/api/simulate', { transactionRequest, chainId });
-
-      setMessages((prevMessages) => [...prevMessages, { sender: 'bot', text: response.data.result }]);
+      setMessages((prevMessages) => [...prevMessages, { sender: 'bot', text: "Swap completed successfully!" }]);
     } catch (error) {
       console.error('Error processing transaction:', error);
       if (error.response) {
@@ -55,7 +59,9 @@ function App() {
       }
     }
 
-    setInput('');
+    setInputAmount('');
+    setFromToken('');
+    setToToken('');
   };
 
   return (
@@ -70,9 +76,23 @@ function App() {
       <div style={styles.inputContainer}>
         <input
           type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type your message here..."
+          value={inputAmount}
+          onChange={(e) => setInputAmount(e.target.value)}
+          placeholder="Enter amount..."
+          style={styles.input}
+        />
+        <input
+          type="text"
+          value={fromToken}
+          onChange={(e) => setFromToken(e.target.value)}
+          placeholder="From Token (ERC-20 address)..."
+          style={styles.input}
+        />
+        <input
+          type="text"
+          value={toToken}
+          onChange={(e) => setToToken(e.target.value)}
+          placeholder="To Token (ERC-20 address)..."
           style={styles.input}
         />
         <button onClick={handleSendMessage} style={styles.sendButton}>Send</button>
@@ -81,7 +101,6 @@ function App() {
   );
 }
 
-// Styles for the chat container, messages, and input area
 const styles = {
   chatContainer: {
     display: 'flex',

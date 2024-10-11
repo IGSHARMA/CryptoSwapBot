@@ -15,6 +15,7 @@ const TENDERLY_ACCOUNT_SLUG = process.env.TENDERLY_ACCOUNT_SLUG;
 const TENDERLY_PROJECT_SLUG = process.env.TENDERLY_PROJECT_SLUG;
 const TENDERLY_RPC_URL = 'https://rpc.tenderly.co/fork/7932e8e6-a9aa-45d7-a74b-9a7ee30b3a3d'; // Static Tenderly Fork RPC URL
 const DEFAULT_FROM_ADDRESS = '0xF2C9729E0FEf5dd486753dc02aFE93BC0c06801e'; // Static address for transactions
+const forkId = '7932e8e6-a9aa-45d7-a74b-9a7ee30b3a3d'
 
 // Simulate a swap transaction on Uniswap
 const simulateSwapTransaction = async () => {
@@ -52,9 +53,11 @@ const simulateSwapTransaction = async () => {
     }
 };
 
+
 const simulateTransactionOnFork = async (transactionRequest) => {
     try {
         console.log("Transaction Request:", transactionRequest);
+
         if (!transactionRequest.to || !transactionRequest.data) {
             throw new Error("Missing required transaction fields");
         }
@@ -62,15 +65,12 @@ const simulateTransactionOnFork = async (transactionRequest) => {
         // Use the provided Tenderly RPC endpoint
         const provider = new ethers.JsonRpcProvider(TENDERLY_RPC_URL);
 
-        // Use the predefined address for all transactions
-        const fromAddress = DEFAULT_FROM_ADDRESS;
-        console.log("Using from address:", fromAddress);
-
-        // Use a signer wallet for signing transactions instead of provider.getSigner
-        const privateKey = process.env.PRIVATE_KEY; // Add the private key of the account (e.g., from Tenderly forked accounts)
+        const privateKey = process.env.PRIVATE_KEY;
         const wallet = new ethers.Wallet(privateKey, provider);
 
         console.log("Signer wallet obtained for address:", wallet.address);
+
+        // Send transaction
         const txResponse = await wallet.sendTransaction({
             to: transactionRequest.to,
             data: transactionRequest.data,
@@ -82,12 +82,35 @@ const simulateTransactionOnFork = async (transactionRequest) => {
         // Wait for the transaction to be mined
         const receipt = await txResponse.wait();
         console.log('Transaction Simulated Successfully:', receipt);
-        return receipt;
+
+        // Extract necessary details for the Tenderly API call
+        const transactionId = txResponse.hash; // Get transaction hash
+        console.log(`Transaction ID: ${transactionId}`)
+        // Prepare Tenderly API call to get transaction trace
+        const accessKey = TENDERLY_API_KEY;
+        const username = TENDERLY_ACCOUNT_SLUG;
+        const projectSlug = TENDERLY_PROJECT_SLUG;
+        // const forkId = '7932e8e6-a9aa-45d7-a74b-9a7ee30b3a3d';  // Make sure you have the fork ID
+        console.log(`Fork ID: ${forkId}`);
+        const forkTxAPI = `https://api.tenderly.co/api/v1/account/${username}/project/${projectSlug}/fork/${forkId}/transaction/${transactionId}`;
+
+        // Fetch transaction details from Tenderly
+        const resp = await axios.get(forkTxAPI, {
+            headers: {
+                "X-Access-Key": accessKey
+            }
+        });
+
+        console.log("Transaction trace:", resp.data);
+
+        // Return response data to be processed/displayed by the frontend
+        return resp.data;
     } catch (error) {
-        console.log('Error simulating transaction via RPC:', error);
+        console.error('Error simulating transaction via RPC:', error.message);
         throw error;
     }
 };
+
 
 
 // API endpoint to get available accounts from the fork

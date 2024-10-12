@@ -74,15 +74,9 @@ const simulateTransactionOnFork = async (transactionRequest, fromToken, toToken)
         const privateKey = process.env.PRIVATE_KEY;
         const wallet = new ethers.Wallet(privateKey, provider);
 
-        console.log("Signer wallet obtained for address:", wallet.address);
-        console.log(`From Token: ${fromToken}`)
-        console.log(`To Token: ${toToken}`)
         // Make sure the token addresses are valid
         const fromTokenAddress = fromToken//ethers.utils.getAddress(`${fromToken}`);
         const toTokenAddress = toToken//ethers.utils.getAddress(`${toToken}`);
-
-        console.log("From Token Address:", fromTokenAddress);
-        console.log("To Token Address:", toTokenAddress);
 
         // Define ERC20 ABI to interact with balanceOf function
         const erc20Abi = ["function balanceOf(address owner) view returns (uint256)"];
@@ -93,19 +87,14 @@ const simulateTransactionOnFork = async (transactionRequest, fromToken, toToken)
         const initialFromBalance = await fromTokenContract.balanceOf(wallet.address);
         const initialToBalance = await toTokenContract.balanceOf(wallet.address);
 
-        console.log(`Initial balance of fromToken: ${initialFromBalance.toString()}`);
-        console.log(`Initial balance of toToken: ${initialToBalance.toString()}`);
-
         // Send the transaction and wait for it to be mined
         const txResponse = await wallet.sendTransaction(transactionRequest);
         const receipt = await txResponse.wait();
         console.log('Transaction Simulated Successfully:', receipt);
 
-        // Get the balances after the transaction
         const finalFromBalance = await fromTokenContract.balanceOf(wallet.address);
         const finalToBalance = await toTokenContract.balanceOf(wallet.address);
 
-        // Calculate the balance differences
         const fromTokenDelta = (initialFromBalance - finalFromBalance) / BigInt(10 ** 18);
         const toTokenDelta = (finalToBalance - initialToBalance) / BigInt(10 ** 18);
 
@@ -152,150 +141,6 @@ app.post('/api/simulate', async (req, res) => {
         res.status(500).json({ error: 'Error simulating transaction' });
     }
 });
-
-// const simulateTransactionOnFork = async (transactionRequest) => {
-//     try {
-//         console.log("Transaction Request:", transactionRequest);
-
-//         if (!transactionRequest.to || !transactionRequest.data) {
-//             throw new Error("Missing required transaction fields");
-//         }
-
-//         // Use the provided Tenderly RPC endpoint
-//         const provider = new ethers.JsonRpcProvider(TENDERLY_RPC_URL);
-//         const privateKey = process.env.PRIVATE_KEY;
-//         const wallet = new ethers.Wallet(privateKey, provider);
-
-//         console.log("Signer wallet obtained for address:", wallet.address);
-
-//         // Make sure the token addresses are valid
-//         // const fromTokenAddress = ethers.utils.getAddress(transactionRequest.fromToken);
-//         // const toTokenAddress = ethers.utils.getAddress(transactionRequest.toToken);
-
-//         const fromTokenAddress = '0x514910771AF9Ca656af840dff83E8264EcF986CA';
-//         const toTokenAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
-//         console.log("From Token Address:", fromTokenAddress);
-//         console.log("To Token Address:", toTokenAddress);
-
-//         // Define ERC20 ABI to interact with balanceOf function
-//         const erc20Abi = ["function balanceOf(address owner) view returns (uint256)"];
-//         const fromTokenContract = new ethers.Contract(fromTokenAddress, erc20Abi, provider);
-//         const toTokenContract = new ethers.Contract(toTokenAddress, erc20Abi, provider);
-
-//         // Get the balances before the transaction
-//         const initialFromBalance = await fromTokenContract.balanceOf(wallet.address);
-//         const initialToBalance = await toTokenContract.balanceOf(wallet.address);
-
-//         console.log(`Initial balance of fromToken: ${initialFromBalance.toString()}`);
-//         console.log(`Initial balance of toToken: ${initialToBalance.toString()}`);
-
-//         // Send the transaction and wait for it to be mined
-//         const txResponse = await wallet.sendTransaction(transactionRequest);
-//         const receipt = await txResponse.wait();
-//         console.log('Transaction Simulated Successfully:', receipt);
-
-//         // Get the balances after the transaction
-//         const finalFromBalance = await fromTokenContract.balanceOf(wallet.address);
-//         const finalToBalance = await toTokenContract.balanceOf(wallet.address);
-
-//         // Calculate the balance differences
-//         const fromTokenDelta = (initialFromBalance - finalFromBalance) / BigInt(10 ** 18);
-//         const toTokenDelta = (finalToBalance - initialToBalance) / BigInt(10 ** 18);
-
-//         const fromTokenSymbol = "LINK";  // Replace dynamically as needed
-//         const toTokenSymbol = "DAI";     // Replace dynamically as needed
-
-//         // Prepare the balanceChanges array for the frontend
-//         const balanceChanges = [
-//             {
-//                 delta: `-${fromTokenDelta.toString()}`,
-//                 token_symbol: fromTokenSymbol,
-//                 address: wallet.address
-//             },
-//             {
-//                 delta: `+${toTokenDelta.toString()}`,
-//                 token_symbol: toTokenSymbol,
-//                 address: wallet.address
-//             }
-//         ];
-
-//         // Return this to the frontend
-//         return { balanceChanges };
-
-//     } catch (error) {
-//         console.error('Error simulating transaction via API:', error.response?.data || error.message);
-//         throw error;
-//     }
-// };
-
-
-// // API endpoint to get available accounts from the fork
-// app.get('/api/accounts', async (req, res) => {
-//     try {
-//         const provider = new ethers.JsonRpcProvider(TENDERLY_RPC_URL);
-//         const accounts = await provider.listAccounts();
-//         res.json({ accounts });
-//     } catch (error) {
-//         console.error('Error fetching accounts:', error);
-//         res.status(500).json({ error: 'Error fetching accounts' });
-//     }
-// });
-
-// app.post('/api/simulate', async (req, res) => {
-//     try {
-//         const { transactionRequest, type, swapDetails } = req.body;
-
-//         console.log('Received simulation request:', transactionRequest);
-
-//         if (!transactionRequest) {
-//             return res.status(400).json({ error: 'Transaction request is missing' });
-//         }
-
-//         let txRequest = transactionRequest;
-
-//         // Check if this is a swap request for token-to-token
-//         if (type === 'swap' && swapDetails) {
-//             const uniswapRouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // Uniswap Router Address
-
-//             // Define the Uniswap ABI for token-to-token swaps
-//             const uniswapRouterAbi = [
-//                 "function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)"
-//             ];
-
-//             const iface = new ethers.utils.Interface(uniswapRouterAbi);
-
-//             // Define the path for token-to-token swaps (e.g., DAI -> USDC)
-//             const path = [swapDetails.inputToken, swapDetails.outputToken];
-
-//             // Encode the function data for Uniswap token-to-token swap
-//             const data = iface.encodeFunctionData("swapExactTokensForTokens", [
-//                 ethers.BigNumber.from(swapDetails.inputAmount), // Amount of input tokens
-//                 ethers.BigNumber.from(swapDetails.amountOutMin), // Minimum amount of output tokens expected
-//                 path, // Swap path (input -> output token addresses)
-//                 swapDetails.recipient, // Address to receive the output tokens
-//                 Math.floor(Date.now() / 1000) + swapDetails.deadline // Deadline for the swap
-//             ]);
-
-//             // Update the transaction request with encoded data and Uniswap router as the destination
-//             txRequest = {
-//                 from: transactionRequest.from,
-//                 to: uniswapRouterAddress, // Uniswap router address
-//                 data: data,
-//                 gasLimit: ethers.BigNumber.from(transactionRequest.gasLimit || '300000'), // Adjust gas limit for swap
-//                 gasPrice: ethers.BigNumber.from(transactionRequest.gasPrice || '1000000000') // 1 gwei
-//             };
-//         }
-
-//         // Simulate the transaction using the modified transaction request
-//         const simulationResult = await simulateTransactionOnFork(txRequest);
-
-//         // Send the simulation result back to the client
-//         res.json(simulationResult);
-//     } catch (error) {
-//         console.error('Error simulating transaction:', error);
-//         res.status(500).json({ error: 'Error simulating transaction' });
-//     }
-// });
 
 // SWAP endpoint
 app.post('/api/swap', async (req, res) => {

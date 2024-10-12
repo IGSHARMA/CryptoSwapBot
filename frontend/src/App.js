@@ -53,7 +53,11 @@ function App() {
         gasPrice: '1000000000',
       };
 
-      const response = await axios.post('http://localhost:5001/api/simulate', { transactionRequest });
+      const response = await axios.post('http://localhost:5001/api/simulate', {
+        transactionRequest,
+        fromToken: fromTokenChecksum,  // Send dynamic fromToken
+        toToken: toTokenChecksum       // Send dynamic toToken
+      });
 
       const balanceChanges = response.data.balanceChanges;
 

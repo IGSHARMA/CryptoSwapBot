@@ -53,7 +53,7 @@ const simulateSwapTransaction = async () => {
     }
 };
 
-
+//Have to make sure that the fromToken and toToken are sent dynamically from the frontend! 
 const simulateTransactionOnFork = async (transactionRequest) => {
     try {
         console.log("Transaction Request:", transactionRequest);
@@ -64,53 +64,75 @@ const simulateTransactionOnFork = async (transactionRequest) => {
 
         // Use the provided Tenderly RPC endpoint
         const provider = new ethers.JsonRpcProvider(TENDERLY_RPC_URL);
-
         const privateKey = process.env.PRIVATE_KEY;
         const wallet = new ethers.Wallet(privateKey, provider);
 
         console.log("Signer wallet obtained for address:", wallet.address);
 
-        // Send transaction
-        const txResponse = await wallet.sendTransaction({
-            to: transactionRequest.to,
-            data: transactionRequest.data,
-            value: transactionRequest.value || '0',
-            gasLimit: '300000',
-            gasPrice: '1000000000',
-        });
+        // Make sure the token addresses are valid
+        // const fromTokenAddress = ethers.utils.getAddress(transactionRequest.fromToken);
+        // const toTokenAddress = ethers.utils.getAddress(transactionRequest.toToken);
 
-        // Wait for the transaction to be mined
+        const fromTokenAddress = '0x514910771AF9Ca656af840dff83E8264EcF986CA';
+        const toTokenAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
+        console.log("From Token Address:", fromTokenAddress);
+        console.log("To Token Address:", toTokenAddress);
+
+        // Define ERC20 ABI to interact with balanceOf function
+        const erc20Abi = ["function balanceOf(address owner) view returns (uint256)"];
+        const fromTokenContract = new ethers.Contract(fromTokenAddress, erc20Abi, provider);
+        const toTokenContract = new ethers.Contract(toTokenAddress, erc20Abi, provider);
+
+        // Get the balances before the transaction
+        const initialFromBalance = await fromTokenContract.balanceOf(wallet.address);
+        const initialToBalance = await toTokenContract.balanceOf(wallet.address);
+
+        console.log(`Initial balance of fromToken: ${initialFromBalance.toString()}`);
+        console.log(`Initial balance of toToken: ${initialToBalance.toString()}`);
+
+        // Send the transaction and wait for it to be mined
+        const txResponse = await wallet.sendTransaction(transactionRequest);
         const receipt = await txResponse.wait();
         console.log('Transaction Simulated Successfully:', receipt);
 
-        // Extract necessary details for the Tenderly API call
-        const transactionId = txResponse.hash; // Get transaction hash
-        console.log(`Transaction ID: ${transactionId}`)
-        // Prepare Tenderly API call to get transaction trace
-        const accessKey = TENDERLY_API_KEY;
-        const username = TENDERLY_ACCOUNT_SLUG;
-        const projectSlug = TENDERLY_PROJECT_SLUG;
-        // const forkId = '7932e8e6-a9aa-45d7-a74b-9a7ee30b3a3d';  // Make sure you have the fork ID
-        console.log(`Fork ID: ${forkId}`);
-        const forkTxAPI = `https://api.tenderly.co/api/v1/account/${username}/project/${projectSlug}/fork/${forkId}/transaction/${transactionId}`;
+        // Get the balances after the transaction
+        const finalFromBalance = await fromTokenContract.balanceOf(wallet.address);
+        const finalToBalance = await toTokenContract.balanceOf(wallet.address);
 
-        // Fetch transaction details from Tenderly
-        const resp = await axios.get(forkTxAPI, {
-            headers: {
-                "X-Access-Key": accessKey
+        // Calculate the balance differences
+        const fromTokenDelta = (initialFromBalance - finalFromBalance) / BigInt(10 ** 18);
+        const toTokenDelta = (finalToBalance - initialToBalance) / BigInt(10 ** 18);
+
+        const fromTokenSymbol = "LINK";  // Replace dynamically as needed
+        const toTokenSymbol = "DAI";     // Replace dynamically as needed
+
+        // Prepare the balanceChanges array for the frontend
+        const balanceChanges = [
+            {
+                delta: `-${fromTokenDelta.toString()}`,
+                token_symbol: fromTokenSymbol,
+                address: wallet.address
+            },
+            {
+                delta: `+${toTokenDelta.toString()}`,
+                token_symbol: toTokenSymbol,
+                address: wallet.address
             }
-        });
+        ];
 
-        console.log("Transaction trace:", resp.data);
+        // Return this to the frontend
+        return { balanceChanges };
 
-        // Return response data to be processed/displayed by the frontend
-        return resp.data;
+        // return {
+        //     fromTokenDelta: fromTokenDelta.toString(),
+        //     toTokenDelta: toTokenDelta.toString(),
+        // };
+
     } catch (error) {
-        console.error('Error simulating transaction via RPC:', error.message);
+        console.error('Error simulating transaction via API:', error.response?.data || error.message);
         throw error;
     }
 };
-
 
 
 // API endpoint to get available accounts from the fork

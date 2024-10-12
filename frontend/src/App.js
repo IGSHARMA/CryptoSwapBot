@@ -15,24 +15,19 @@ function App() {
     ]);
 
     try {
-      // Connect to the user's Ethereum wallet (MetaMask or similar)
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-
       const uniswapRouterAddress = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D';
 
-      // Ensure token addresses have correct checksums
       const fromTokenChecksum = ethers.getAddress(fromToken);
       const toTokenChecksum = ethers.getAddress(toToken);
 
-      // Approve Uniswap router to spend tokens
       const erc20Abi = ["function approve(address spender, uint256 amount) public returns (bool)"];
       const tokenContract = new Contract(fromTokenChecksum, erc20Abi, signer);
       const approvalAmount = ethers.parseUnits(inputAmount, 18);
       const approveTx = await tokenContract.approve(uniswapRouterAddress, approvalAmount);
       await approveTx.wait();
 
-      // Build the calldata for the swap function
       const uniswapRouterABI = [
         "function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)"
       ];
@@ -49,31 +44,32 @@ function App() {
         [amountIn, amountOutMin, path, toAddress, deadline]
       );
 
-      // Prepare the transaction request to send to the backend
       const transactionRequest = {
         from: toAddress,
         to: uniswapRouterAddress,
         data: calldata,
-        value: '0',  // For token-to-token swaps, value is 0
-        gasLimit: '300000',  // Adjust as needed
-        gasPrice: '1000000000',  // 1 gwei
+        value: '0',
+        gasLimit: '300000',
+        gasPrice: '1000000000',
       };
 
-      // Send the transaction request to the backend for simulation
       const response = await axios.post('http://localhost:5001/api/simulate', { transactionRequest });
 
       const balanceChanges = response.data.balanceChanges;
 
-      // Format and display the balance changes
-      let formattedMessage = "Balance changes:\n";
-      balanceChanges.forEach((change) => {
-        formattedMessage += `${change.delta} ${change.token_symbol} in ${change.address}\n`;
-      });
+      if (balanceChanges && Array.isArray(balanceChanges)) {
+        let formattedMessage = "Balance changes:\n";
+        balanceChanges.forEach((change) => {
+          formattedMessage += `${change.delta} ${change.token_symbol} in ${change.address}\n`;
+        });
 
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        { sender: 'bot', text: formattedMessage }
-      ]);
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          { sender: 'bot', text: formattedMessage }
+        ]);
+      } else {
+        throw new Error("Invalid balance changes response");
+      }
 
     } catch (error) {
       console.error('Error processing transaction:', error);
@@ -99,6 +95,7 @@ function App() {
     setFromToken('');
     setToToken('');
   };
+
 
   return (
     <div style={styles.chatContainer}>

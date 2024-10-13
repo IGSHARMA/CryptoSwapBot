@@ -225,15 +225,15 @@ app.post('/api/bridge', async (req, res) => {
 
 
 const AAVE_POOL_ADDRESS = '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2';
-const WETH_GATEWAY_ADDRESS = '0xC09e69E79106861dF5d289dA88349f10e2dc6b5C';
+const WETH_GATEWAY_ADDRESS = '0xD322A49006FC828F9B5B37Ab215F99B4E5caB19C'
 const ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+const AWETH_ADDRESS = '0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8';
 
 const TOKENS = {
     'ETH': { address: ETH_ADDRESS, decimals: 18 },
     'DAI': { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
     'USDC': { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
     'USDT': { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
-    // Add more tokens as needed
 };
 
 const aavePoolAbi = [
@@ -271,21 +271,48 @@ const simulateAaveOperation = async (action, tokenSymbol, amount, userAddress) =
         if (token.address === ETH_ADDRESS) {
             // ETH operation
             if (action === 'deposit') {
+                console.log("Preparing ETH deposit");
+                console.log("WETH Gateway Address:", WETH_GATEWAY_ADDRESS);
+                console.log("Aave Pool Address:", AAVE_POOL_ADDRESS);
+                console.log("User Address:", userAddress);
+                console.log("Amount (Wei):", amountWei.toString());
+
+                // Use the WETH Gateway to deposit ETH and receive aWETH
                 tx = await wethGatewayContract.depositETH.populateTransaction(
                     AAVE_POOL_ADDRESS,
                     userAddress,
                     0, // referralCode
                     { value: amountWei }
                 );
-                console.log("Depositing ETH to AAVE");
+                tx.to = WETH_GATEWAY_ADDRESS;
+                console.log("Depositing ETH to AAVE via WETH Gateway");
+                console.log("Deposit transaction data:", tx);
+
             } else if (action === 'withdraw') {
+                console.log("Preparing ETH withdrawal");
+                console.log("WETH Gateway Address:", WETH_GATEWAY_ADDRESS);
+                console.log("Aave Pool Address:", AAVE_POOL_ADDRESS);
+                console.log("User Address:", userAddress);
+                console.log("Amount (Wei):", amountWei.toString());
+
+                const aWETHAddress = '0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8';
+                const aWETHContract = new ethers.Contract(aWETHAddress, erc20Abi, wallet);
+                const aWETHBalance = await aWETHContract.balanceOf(userAddress);
+
+                // Approve WETH Gateway to spend aWETH
+                const approveTx = await aWETHContract.approve.populateTransaction(WETH_GATEWAY_ADDRESS, amountWei);
+                await wallet.sendTransaction(approveTx);
+                console.log("Approved WETH Gateway to spend aWETH");
+
+                // Withdraw ETH
                 tx = await wethGatewayContract.withdrawETH.populateTransaction(
                     AAVE_POOL_ADDRESS,
                     amountWei,
                     userAddress
                 );
-                console.log("Withdrawing ETH from AAVE");
                 tx.to = WETH_GATEWAY_ADDRESS;
+                console.log("Withdrawing ETH from AAVE");
+                console.log("Withdraw transaction data:", tx);
             }
         } else {
             // ERC20 token operation
@@ -325,6 +352,13 @@ const simulateAaveOperation = async (action, tokenSymbol, amount, userAddress) =
         const receipt = await txResponse.wait();
         console.log("Transaction Simulated Successfully:", receipt);
 
+        // Check aWETH balance after operation
+        if (token.address === ETH_ADDRESS) {
+            const aWETHAddress = '0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8';
+            const aWETHContract = new ethers.Contract(aWETHAddress, erc20Abi, wallet);
+            const aWETHBalance = await aWETHContract.balanceOf(userAddress);
+        }
+
         return receipt;
 
     } catch (error) {
@@ -333,7 +367,6 @@ const simulateAaveOperation = async (action, tokenSymbol, amount, userAddress) =
     }
 };
 
-// Express route
 app.post('/api/aave', async (req, res) => {
     try {
         const { action, tokenSymbol, amount, userAddress } = req.body;

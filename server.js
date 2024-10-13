@@ -224,49 +224,102 @@ app.post('/api/bridge', async (req, res) => {
 })
 
 
-//AAVE Extensions:
+const AAVE_POOL_ADDRESS = '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2';
+const WETH_GATEWAY_ADDRESS = '0xC09e69E79106861dF5d289dA88349f10e2dc6b5C';
+const ETH_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
-const simulateSupplyOnAave = async () => {
+const TOKENS = {
+    'ETH': { address: ETH_ADDRESS, decimals: 18 },
+    'DAI': { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
+    'USDC': { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
+    'USDT': { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
+    // Add more tokens as needed
+};
+
+const aavePoolAbi = [
+    "function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external",
+    "function withdraw(address asset, uint256 amount, address to) external returns (uint256)"
+];
+
+const erc20Abi = [
+    "function approve(address spender, uint256 amount) external returns (bool)",
+    "function balanceOf(address account) external view returns (uint256)",
+    "function decimals() external view returns (uint8)"
+];
+
+const wethGatewayAbi = [
+    "function depositETH(address lendingPool, address onBehalfOf, uint16 referralCode) external payable",
+    "function withdrawETH(address lendingPool, uint256 amount, address to) external"
+];
+
+const simulateAaveOperation = async (action, tokenSymbol, amount, userAddress) => {
     try {
         const provider = new ethers.JsonRpcProvider(TENDERLY_RPC_URL);
         const privateKey = process.env.PRIVATE_KEY;
         const wallet = new ethers.Wallet(privateKey, provider);
         console.log(`Signer wallet obtained for address: ${wallet.address}`);
 
-        // Aave V3 Wrapper contract for ETH deposits
-        const wethGatewayAddress = '0xC09e69E79106861dF5d289dA88349f10e2dc6b5C';
+        const aavePoolContract = new ethers.Contract(AAVE_POOL_ADDRESS, aavePoolAbi, wallet);
+        const wethGatewayContract = new ethers.Contract(WETH_GATEWAY_ADDRESS, wethGatewayAbi, wallet);
 
-        const aaveWethGatewayAbi = [
-            "function depositETH(address lendingPool, address onBehalfOf, uint16 referralCode) external payable"
-        ];
+        let tx;
+        const token = TOKENS[tokenSymbol.toUpperCase()];
+        if (!token) throw new Error(`Unsupported token: ${tokenSymbol}`);
 
-        // Create the contract instance
-        const aaveWethGatewayContract = new ethers.Contract(wethGatewayAddress, aaveWethGatewayAbi, wallet);
+        const amountWei = ethers.parseUnits(amount, token.decimals);
 
-        // Aave V3 Pool address
-        const poolAddress = '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2';
-        const amount = ethers.parseEther("1");  // 1 ETH
-        const referralCode = 0;
+        if (token.address === ETH_ADDRESS) {
+            // ETH operation
+            if (action === 'deposit') {
+                tx = await wethGatewayContract.depositETH.populateTransaction(
+                    AAVE_POOL_ADDRESS,
+                    userAddress,
+                    0, // referralCode
+                    { value: amountWei }
+                );
+                console.log("Depositing ETH to AAVE");
+            } else if (action === 'withdraw') {
+                tx = await wethGatewayContract.withdrawETH.populateTransaction(
+                    AAVE_POOL_ADDRESS,
+                    amountWei,
+                    userAddress
+                );
+                console.log("Withdrawing ETH from AAVE");
+            }
+        } else {
+            // ERC20 token operation
+            const tokenContract = new ethers.Contract(token.address, erc20Abi, wallet);
 
-        console.log('TENDERLY_RPC_URL:', TENDERLY_RPC_URL);
-        console.log('Wallet address:', wallet.address);
-        console.log('WETH Gateway address:', wethGatewayAddress);
-        console.log('Pool address:', poolAddress);
-        console.log('Amount:', amount.toString());
+            if (action === 'deposit') {
+                // Approve spending
+                const approveTx = await tokenContract.approve.populateTransaction(AAVE_POOL_ADDRESS, amountWei);
+                await wallet.sendTransaction(approveTx);
+                console.log(`Approved ${tokenSymbol} spending`);
 
-        // Create the transaction request
-        const tx = await aaveWethGatewayContract.depositETH.populateTransaction(
-            poolAddress,
-            wallet.address,
-            referralCode,
-            { value: amount }
-        );
+                tx = await aavePoolContract.supply.populateTransaction(
+                    token.address,
+                    amountWei,
+                    userAddress,
+                    0 // referralCode
+                );
+                console.log(`Depositing ${tokenSymbol} to AAVE`);
+            } else if (action === 'withdraw') {
+                tx = await aavePoolContract.withdraw.populateTransaction(
+                    token.address,
+                    amountWei,
+                    userAddress
+                );
+                console.log(`Withdrawing ${tokenSymbol} from AAVE`);
+            }
+        }
 
-        // Add gas limit and price
+        if (!tx) {
+            throw new Error('Invalid action or token');
+        }
+
         tx.gasLimit = '300000';
         tx.gasPrice = '10000000000'; // 10 gwei in wei
 
-        // Send the transaction and wait for the response
         const txResponse = await wallet.sendTransaction(tx);
         const receipt = await txResponse.wait();
         console.log("Transaction Simulated Successfully:", receipt);
@@ -274,25 +327,43 @@ const simulateSupplyOnAave = async () => {
         return receipt;
 
     } catch (error) {
-        console.error('Error simulating supply transaction:', error);
+        console.error('Error simulating Aave operation:', error);
         throw error;
     }
 };
 
-app.post('/api/deposit', async (req, res) => {
+// Express route
+app.post('/api/aave', async (req, res) => {
     try {
-        // Simulate the supply transaction to Aave
-        const receipt = await simulateSupplyOnAave();
+        const { action, tokenSymbol, amount, userAddress } = req.body;
 
-        // Return the receipt or a success message to the frontend
+        // Validate input
+        if (!action || !tokenSymbol || !amount || !userAddress) {
+            throw new Error('Missing required parameters');
+        }
+
+        if (action !== 'deposit' && action !== 'withdraw') {
+            throw new Error('Invalid action. Use "deposit" or "withdraw".');
+        }
+
+        if (!TOKENS[tokenSymbol.toUpperCase()]) {
+            throw new Error(`Unsupported token: ${tokenSymbol}`);
+        }
+
+        const receipt = await simulateAaveOperation(action, tokenSymbol, amount, userAddress);
+
         res.json({
             success: true,
-            message: 'Supply simulated successfully',
+            message: `${action} of ${amount} ${tokenSymbol} simulated successfully`,
             receipt: receipt
         });
     } catch (error) {
-        console.error('Error simulating supply:', error);
-        res.status(500).json({ success: false, message: 'Failed to simulate supply', error: error.message });
+        console.error(`Error simulating Aave operation:`, error);
+        res.status(500).json({
+            success: false,
+            message: `Failed to simulate Aave operation`,
+            error: error.message
+        });
     }
 });
 

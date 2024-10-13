@@ -354,7 +354,7 @@ app.post('/api/aave', async (req, res) => {
 
         res.json({
             success: true,
-            message: `${action} of ${amount} ${tokenSymbol} simulated successfully`,
+            message: `${action} of ${amount} ${tokenSymbol} successful!`,
             receipt: receipt
         });
     } catch (error) {

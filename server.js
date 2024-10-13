@@ -223,6 +223,79 @@ app.post('/api/bridge', async (req, res) => {
     }
 })
 
+
+//AAVE Extensions:
+
+const simulateSupplyOnAave = async () => {
+    try {
+        const provider = new ethers.JsonRpcProvider(TENDERLY_RPC_URL);
+        const privateKey = process.env.PRIVATE_KEY;
+        const wallet = new ethers.Wallet(privateKey, provider);
+        console.log(`Signer wallet obtained for address: ${wallet.address}`);
+
+        // Aave V3 Wrapper contract for ETH deposits
+        const wethGatewayAddress = '0xC09e69E79106861dF5d289dA88349f10e2dc6b5C';
+
+        const aaveWethGatewayAbi = [
+            "function depositETH(address lendingPool, address onBehalfOf, uint16 referralCode) external payable"
+        ];
+
+        // Create the contract instance
+        const aaveWethGatewayContract = new ethers.Contract(wethGatewayAddress, aaveWethGatewayAbi, wallet);
+
+        // Aave V3 Pool address
+        const poolAddress = '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2';
+        const amount = ethers.parseEther("1");  // 1 ETH
+        const referralCode = 0;
+
+        console.log('TENDERLY_RPC_URL:', TENDERLY_RPC_URL);
+        console.log('Wallet address:', wallet.address);
+        console.log('WETH Gateway address:', wethGatewayAddress);
+        console.log('Pool address:', poolAddress);
+        console.log('Amount:', amount.toString());
+
+        // Create the transaction request
+        const tx = await aaveWethGatewayContract.depositETH.populateTransaction(
+            poolAddress,
+            wallet.address,
+            referralCode,
+            { value: amount }
+        );
+
+        // Add gas limit and price
+        tx.gasLimit = '300000';
+        tx.gasPrice = '10000000000'; // 10 gwei in wei
+
+        // Send the transaction and wait for the response
+        const txResponse = await wallet.sendTransaction(tx);
+        const receipt = await txResponse.wait();
+        console.log("Transaction Simulated Successfully:", receipt);
+
+        return receipt;
+
+    } catch (error) {
+        console.error('Error simulating supply transaction:', error);
+        throw error;
+    }
+};
+
+app.post('/api/deposit', async (req, res) => {
+    try {
+        // Simulate the supply transaction to Aave
+        const receipt = await simulateSupplyOnAave();
+
+        // Return the receipt or a success message to the frontend
+        res.json({
+            success: true,
+            message: 'Supply simulated successfully',
+            receipt: receipt
+        });
+    } catch (error) {
+        console.error('Error simulating supply:', error);
+        res.status(500).json({ success: false, message: 'Failed to simulate supply', error: error.message });
+    }
+});
+
 app.listen(port, () => {
     console.log(`API running on http://localhost:${port}`);
 });

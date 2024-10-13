@@ -285,6 +285,7 @@ const simulateAaveOperation = async (action, tokenSymbol, amount, userAddress) =
                     userAddress
                 );
                 console.log("Withdrawing ETH from AAVE");
+                tx.to = WETH_GATEWAY_ADDRESS;
             }
         } else {
             // ERC20 token operation
